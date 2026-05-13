@@ -10,7 +10,15 @@ export interface UploadValidationResult {
   error?: string;
 }
 
-export function validateUploadBatch(files: File[]): UploadValidationResult {
+export interface UploadFileCandidate {
+  name: string;
+  size: number;
+  type: string;
+}
+
+export function validateUploadBatch(
+  files: UploadFileCandidate[],
+): UploadValidationResult {
   if (files.length === 0) {
     return { ok: false, error: "Attach at least one PDF or image." };
   }
@@ -32,7 +40,7 @@ export function validateUploadBatch(files: File[]): UploadValidationResult {
   return { ok: true };
 }
 
-export function validateUploadFile(file: File): UploadValidationResult {
+export function validateUploadFile(file: UploadFileCandidate): UploadValidationResult {
   if (!isAllowedUploadMimeType(file.type)) {
     return {
       ok: false,

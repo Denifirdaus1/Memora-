@@ -2,10 +2,8 @@ import * as Sentry from "@sentry/nextjs";
 import { NextResponse } from "next/server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { runUploadPipeline } from "@/server/uploads/upload-pipeline";
+import { prepareDirectUploads } from "@/server/uploads/direct-upload-pipeline";
 import type { UserProfile } from "@/types/database";
-
-export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
@@ -32,15 +30,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "User profile not found." }, { status: 404 });
     }
 
-    const result = await runUploadPipeline({
-      formData: await request.formData(),
+    const result = await prepareDirectUploads({
+      input: (await request.json()) as Parameters<
+        typeof prepareDirectUploads
+      >[0]["input"],
       supabase,
       user,
       profile: profile as UserProfile,
     });
 
     if ("status" in result) {
-      Sentry.captureMessage("Legacy upload pipeline failed", {
+      Sentry.captureMessage("Upload prepare failed", {
         level: "warning",
         extra: { status: result.status, message: result.message },
       });
@@ -50,6 +50,6 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (error) {
     Sentry.captureException(error);
-    return NextResponse.json({ error: "Upload failed." }, { status: 500 });
+    return NextResponse.json({ error: "Upload preparation failed." }, { status: 500 });
   }
 }
