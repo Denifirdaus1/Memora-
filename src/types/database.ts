@@ -9,6 +9,8 @@ export type MessageRole = "system" | "user" | "assistant" | "tool";
 
 export type UploadStatus = "queued" | "processing" | "done" | "failed" | "deleted";
 
+export type UploadJobStatus = "queued" | "processing" | "done" | "failed";
+
 export type KnowledgeItemType =
   | "vocabulary"
   | "grammar_pattern"
@@ -80,6 +82,10 @@ export interface ThreadUpload {
   mime_type: string;
   page_count: number | null;
   status: UploadStatus;
+  storage_bucket: string;
+  storage_path: string;
+  storage_deleted_at: string | null;
+  error_message: string | null;
   extraction_summary: {
     vocabulary: number;
     grammar_patterns: number;
@@ -89,6 +95,20 @@ export interface ThreadUpload {
   } | null;
   created_at: string;
   completed_at: string | null;
+}
+
+export interface UploadJob {
+  id: string;
+  upload_id: string;
+  thread_id: string;
+  user_id: string;
+  status: UploadJobStatus;
+  attempts: number;
+  last_error: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ThreadMemory {

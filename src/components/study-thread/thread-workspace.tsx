@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status-pill";
+import { UploadComposer } from "@/components/uploads/upload-composer";
 import {
   getStudyThread,
   getThreadMessages,
@@ -58,7 +59,10 @@ export async function ThreadWorkspace({ threadId }: { threadId: string }) {
               <FileText className="text-[var(--accent-blue)]" size={18} />
               <div>
                 <p className="font-semibold">{upload.file_name}</p>
-                <p className="text-sm capitalize text-[var(--muted)]">{upload.status}</p>
+                <p className="text-sm capitalize text-[var(--muted)]">
+                  {upload.status}
+                  {upload.storage_deleted_at ? " · raw file deleted" : ""}
+                </p>
               </div>
             </div>
             {upload.extraction_summary ? (
@@ -81,9 +85,16 @@ export async function ThreadWorkspace({ threadId }: { threadId: string }) {
                 />
               </div>
             ) : (
-              <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
-                <div className="h-full w-2/3 rounded-full bg-[var(--accent-sky)]" />
-              </div>
+              <>
+                <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div className="h-full w-2/3 rounded-full bg-[var(--accent-sky)]" />
+                </div>
+                {upload.error_message ? (
+                  <p className="mt-2 text-sm font-semibold text-[var(--danger)]">
+                    {upload.error_message}
+                  </p>
+                ) : null}
+              </>
             )}
           </div>
         ))}
@@ -133,25 +144,23 @@ export async function ThreadWorkspace({ threadId }: { threadId: string }) {
       </section>
 
       <footer className="border-t border-[var(--border)] bg-white p-4">
-        <form
-          action={createThreadMessageAction}
-          className="mx-auto flex max-w-3xl items-end gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-3"
-        >
-          <input type="hidden" name="threadId" value={thread.id} />
-          <button
-            type="button"
-            disabled
-            className="rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm font-semibold opacity-60"
+        <div className="mx-auto max-w-3xl space-y-3">
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-3">
+            <UploadComposer threadId={thread.id} variant="compact" />
+          </div>
+          <form
+            action={createThreadMessageAction}
+            className="flex items-end gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-3"
           >
-            Attach files
-          </button>
-          <textarea
-            name="message"
-            className="min-h-10 flex-1 resize-none bg-transparent text-sm outline-none"
-            placeholder="Ask or study from this thread..."
-          />
-          <Button type="submit">Send</Button>
-        </form>
+            <input type="hidden" name="threadId" value={thread.id} />
+            <textarea
+              name="message"
+              className="min-h-10 flex-1 resize-none bg-transparent text-sm outline-none"
+              placeholder="Ask or study from this thread..."
+            />
+            <Button type="submit">Send</Button>
+          </form>
+        </div>
       </footer>
     </div>
   );

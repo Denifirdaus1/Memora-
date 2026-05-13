@@ -1,0 +1,371 @@
+import type { SupabaseClient, User } from "@supabase/supabase-js";
+
+import { TEMP_UPLOAD_BUCKET } from "@/features/uploads/constants";
+import { buildExtractionStub } from "@/features/uploads/extraction-stub";
+import { buildTempUploadPath } from "@/features/uploads/storage-path";
+import { validateUploadBatch } from "@/features/uploads/validation";
+import type { UserProfile } from "@/types/database";
+
+export interface UploadPipelineResult {
+  threadId: string;
+  uploadIds: string[];
+}
+
+export interface UploadPipelineError {
+  status: number;
+  message: string;
+}
+
+interface ResolvedThread {
+  threadId: string;
+}
+
+interface ProcessedUpload {
+  uploadId: string;
+}
+
+export async function runUploadPipeline({
+  formData,
+  supabase,
+  user,
+  profile,
+}: {
+  formData: FormData;
+  supabase: SupabaseClient;
+  user: User;
+  profile: UserProfile;
+}): Promise<UploadPipelineResult | UploadPipelineError> {
+  if (!profile.native_language || !profile.onboarding_completed_at) {
+    return { status: 403, message: "Complete onboarding before uploading material." };
+  }
+
+  const files = formData.getAll("files").filter(isFileWithContent);
+  const validation = validateUploadBatch(files);
+
+  if (!validation.ok) {
+    return { status: 400, message: validation.error ?? "Invalid upload." };
+  }
+
+  const threadResult = await resolveThread({ formData, supabase, user });
+  if ("status" in threadResult) {
+    return threadResult;
+  }
+
+  const uploadIds: string[] = [];
+
+  for (const file of files) {
+    const uploadResult = await processSingleFile({
+      file,
+      supabase,
+      threadId: threadResult.threadId,
+      userId: user.id,
+    });
+
+    if ("status" in uploadResult) {
+      return uploadResult;
+    }
+
+    uploadIds.push(uploadResult.uploadId);
+  }
+
+  return { threadId: threadResult.threadId, uploadIds };
+}
+
+async function resolveThread({
+  formData,
+  supabase,
+  user,
+}: {
+  formData: FormData;
+  supabase: SupabaseClient;
+  user: User;
+}): Promise<ResolvedThread | UploadPipelineError> {
+  const threadId = readFormString(formData, "threadId");
+
+  if (threadId) {
+    const { data, error } = await supabase
+      .from("study_threads")
+      .select("id")
+      .eq("id", threadId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (error) {
+      return { status: 500, message: error.message };
+    }
+
+    if (!data) {
+      return { status: 404, message: "Study thread not found." };
+    }
+
+    return { threadId: data.id as string };
+  }
+
+  const firstMessage = readFormString(formData, "firstMessage");
+  const title = readFormString(formData, "title") ?? deriveTitle(firstMessage);
+
+  const { data: thread, error: threadError } = await supabase
+    .from("study_threads")
+    .insert({
+      user_id: user.id,
+      title,
+      status: "processing",
+    })
+    .select("id")
+    .single();
+
+  if (threadError) {
+    return { status: 500, message: threadError.message };
+  }
+
+  const { error: memoryError } = await supabase.from("thread_memories").insert({
+    thread_id: thread.id,
+    user_id: user.id,
+    summary: "Upload processing started. Extraction summary will appear here.",
+    key_terms: [],
+  });
+
+  if (memoryError) {
+    return { status: 500, message: memoryError.message };
+  }
+
+  if (firstMessage) {
+    const { error: messageError } = await supabase.from("thread_messages").insert({
+      thread_id: thread.id,
+      user_id: user.id,
+      role: "user",
+      content: { text: firstMessage },
+    });
+
+    if (messageError) {
+      return { status: 500, message: messageError.message };
+    }
+  }
+
+  return { threadId: thread.id as string };
+}
+
+async function processSingleFile({
+  file,
+  supabase,
+  threadId,
+  userId,
+}: {
+  file: File;
+  supabase: SupabaseClient;
+  threadId: string;
+  userId: string;
+}): Promise<ProcessedUpload | UploadPipelineError> {
+  const uploadId = crypto.randomUUID();
+  const storagePath = buildTempUploadPath({
+    userId,
+    threadId,
+    uploadId,
+    fileName: file.name,
+  });
+
+  const { error: uploadRowError } = await supabase.from("thread_uploads").insert({
+    id: uploadId,
+    thread_id: threadId,
+    user_id: userId,
+    file_name: file.name,
+    file_size_bytes: file.size,
+    mime_type: file.type,
+    status: "queued",
+    storage_bucket: TEMP_UPLOAD_BUCKET,
+    storage_path: storagePath,
+  });
+
+  if (uploadRowError) {
+    return { status: 500, message: uploadRowError.message };
+  }
+
+  const { data: job, error: jobError } = await supabase
+    .from("upload_jobs")
+    .insert({
+      upload_id: uploadId,
+      thread_id: threadId,
+      user_id: userId,
+      status: "queued",
+    })
+    .select("id")
+    .single();
+
+  if (jobError) {
+    await markUploadFailed({ supabase, uploadId, message: jobError.message });
+    return { status: 500, message: jobError.message };
+  }
+
+  const startedAt = new Date().toISOString();
+  await supabase
+    .from("thread_uploads")
+    .update({ status: "processing" })
+    .eq("id", uploadId)
+    .eq("user_id", userId);
+  await supabase
+    .from("upload_jobs")
+    .update({ status: "processing", attempts: 1, started_at: startedAt })
+    .eq("id", job.id)
+    .eq("user_id", userId);
+
+  const { error: storageError } = await supabase.storage
+    .from(TEMP_UPLOAD_BUCKET)
+    .upload(storagePath, file, {
+      contentType: file.type,
+      upsert: false,
+    });
+
+  if (storageError) {
+    await markJobFailed({
+      supabase,
+      jobId: job.id,
+      userId,
+      message: storageError.message,
+    });
+    await markUploadFailed({ supabase, uploadId, message: storageError.message });
+    return { status: 500, message: storageError.message };
+  }
+
+  const { error: removeError } = await supabase.storage
+    .from(TEMP_UPLOAD_BUCKET)
+    .remove([storagePath]);
+
+  if (removeError) {
+    await markJobFailed({
+      supabase,
+      jobId: job.id,
+      userId,
+      message: removeError.message,
+    });
+    await markUploadFailed({ supabase, uploadId, message: removeError.message });
+    return { status: 500, message: removeError.message };
+  }
+
+  const extraction = buildExtractionStub({
+    fileName: file.name,
+    mimeType: file.type,
+  });
+
+  const { error: knowledgeError } = await supabase.from("knowledge_items").insert(
+    extraction.items.map((item) => ({
+      thread_id: threadId,
+      upload_id: uploadId,
+      user_id: userId,
+      ...item,
+    })),
+  );
+
+  if (knowledgeError) {
+    await markJobFailed({
+      supabase,
+      jobId: job.id,
+      userId,
+      message: knowledgeError.message,
+    });
+    await markUploadFailed({ supabase, uploadId, message: knowledgeError.message });
+    return { status: 500, message: knowledgeError.message };
+  }
+
+  const completedAt = new Date().toISOString();
+
+  const { error: doneError } = await supabase
+    .from("thread_uploads")
+    .update({
+      status: "done",
+      extraction_summary: extraction.summary,
+      storage_deleted_at: completedAt,
+      completed_at: completedAt,
+    })
+    .eq("id", uploadId)
+    .eq("user_id", userId);
+
+  if (doneError) {
+    return { status: 500, message: doneError.message };
+  }
+
+  await supabase
+    .from("upload_jobs")
+    .update({ status: "done", completed_at: completedAt })
+    .eq("id", job.id)
+    .eq("user_id", userId);
+
+  await supabase
+    .from("study_threads")
+    .update({
+      status: "ready",
+      detected_topic: extraction.summary.detected_topic,
+      last_activity_at: completedAt,
+    })
+    .eq("id", threadId)
+    .eq("user_id", userId);
+
+  await supabase
+    .from("thread_memories")
+    .update({
+      summary: `Ready to review ${extraction.summary.detected_topic ?? "uploaded material"}.`,
+      key_terms: [extraction.summary.detected_topic ?? "uploaded material"],
+      updated_at: completedAt,
+    })
+    .eq("thread_id", threadId)
+    .eq("user_id", userId);
+
+  return { uploadId };
+}
+
+async function markUploadFailed({
+  supabase,
+  uploadId,
+  message,
+}: {
+  supabase: SupabaseClient;
+  uploadId: string;
+  message: string;
+}) {
+  await supabase
+    .from("thread_uploads")
+    .update({
+      status: "failed",
+      error_message: message,
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", uploadId);
+}
+
+async function markJobFailed({
+  supabase,
+  jobId,
+  userId,
+  message,
+}: {
+  supabase: SupabaseClient;
+  jobId: string;
+  userId: string;
+  message: string;
+}) {
+  await supabase
+    .from("upload_jobs")
+    .update({
+      status: "failed",
+      last_error: message,
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", jobId)
+    .eq("user_id", userId);
+}
+
+function isFileWithContent(value: FormDataEntryValue): value is File {
+  return value instanceof File && value.size > 0;
+}
+
+function readFormString(formData: FormData, key: string) {
+  const value = formData.get(key);
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function deriveTitle(firstMessage: string | null) {
+  if (!firstMessage) {
+    return "Uploaded study material";
+  }
+
+  return firstMessage.length > 72 ? `${firstMessage.slice(0, 69)}...` : firstMessage;
+}

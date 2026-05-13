@@ -1,6 +1,7 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireUser } from "@/server/queries/auth";
 import type {
+  KnowledgeItem,
   StudyThread,
   ThreadMemory,
   ThreadMessage,
@@ -66,8 +67,24 @@ export async function getThreadMessages(threadId: string) {
 }
 
 export async function getThreadUploads(threadId: string) {
-  void threadId;
-  return [] as ThreadUpload[];
+  if (!isUuid(threadId)) {
+    return [];
+  }
+
+  const user = await requireUser();
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("thread_uploads")
+    .select("*")
+    .eq("thread_id", threadId)
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []) as ThreadUpload[];
 }
 
 export async function getThreadMemory(threadId: string) {
@@ -89,6 +106,27 @@ export async function getThreadMemory(threadId: string) {
   }
 
   return data as ThreadMemory | null;
+}
+
+export async function getThreadKnowledgeItems(threadId: string) {
+  if (!isUuid(threadId)) {
+    return [];
+  }
+
+  const user = await requireUser();
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("knowledge_items")
+    .select("*")
+    .eq("thread_id", threadId)
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []) as KnowledgeItem[];
 }
 
 function isUuid(value: string) {

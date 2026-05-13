@@ -1,6 +1,6 @@
 # Sprint 2 - Auth + Supabase Thread Persistence
 
-Status: **In Progress - implementation added, pending live OAuth validation**
+Status: **Done**
 
 ## Goal
 
@@ -76,11 +76,9 @@ Turn the Sprint 1 shell into a real authenticated app where users can create, vi
 
 ## Remaining Manual Validation
 
-- Confirm Google OAuth provider settings in Supabase Auth.
-- Sign in through the browser.
-- Complete onboarding.
-- Create a real study thread.
-- Send one message and verify it appears after reload.
+- Production Google OAuth validated.
+- Redirect to onboarding validated.
+- Redirect to dashboard after onboarding validated.
 
 ## Acceptance Criteria
 

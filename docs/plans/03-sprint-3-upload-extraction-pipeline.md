@@ -1,6 +1,6 @@
 # Sprint 3 - Upload + Extraction Pipeline
 
-Status: **Planned**
+Status: **In Progress - implementation added, pending live upload validation**
 
 ## Goal
 
@@ -56,3 +56,36 @@ Allow users to attach PDF/image learning material to a study thread and process 
 - Sprint 2 authenticated thread persistence.
 - Supabase Storage configured.
 - Exact `knowledge_items.content` schema locked before real AI extraction.
+
+## Implementation Notes
+
+- Applied Supabase migration:
+  - `sprint_3_upload_extraction_pipeline`
+  - `add_upload_fk_covering_indexes`
+- Added private Supabase Storage bucket:
+  - `temp-uploads`
+- Added public tables with RLS:
+  - `thread_uploads`
+  - `upload_jobs`
+  - `knowledge_items`
+- Upload route implemented:
+  - `POST /api/uploads`
+  - accepts `files`, optional `threadId`, optional `title`, optional `firstMessage`
+  - creates a thread when `threadId` is omitted
+  - stores the raw file temporarily in `temp-uploads`
+  - deletes the raw file after processing
+  - writes extraction placeholder `knowledge_items`
+  - updates thread status to `ready`
+- UI implemented:
+  - New Study upload composer
+  - Thread workspace upload composer
+  - Upload status cards in thread workspace
+- Unit coverage added for upload validation and extraction stub.
+
+## Remaining Manual Validation
+
+- Upload one PDF/image from production.
+- Confirm thread opens after upload.
+- Confirm upload status is `done`.
+- Confirm `knowledge_items` exists for the upload.
+- Confirm no raw object remains in `temp-uploads`.

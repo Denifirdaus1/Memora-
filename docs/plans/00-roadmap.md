@@ -1,10 +1,10 @@
 # Memora Implementation Roadmap
 
-Last updated: May 12, 2026
+Last updated: May 13, 2026
 
 ## Current Status
 
-Memora is currently in **Sprint 2 - Auth + Supabase Thread Persistence**.
+Memora is currently in **Sprint 3 - Upload + Extraction Pipeline**.
 
 The product direction is locked as:
 
@@ -24,8 +24,8 @@ The product direction is locked as:
 | Sprint | Plan | Status | Goal |
 | --- | --- | --- | --- |
 | 1 | [Foundation](./01-sprint-1-foundation.md) | Done | Next.js app, UI shell, routes, contracts, tests |
-| 2 | [Auth + Supabase Thread Persistence](./02-sprint-2-auth-supabase-thread-persistence.md) | In Progress | Real auth, users, study threads, thread messages |
-| 3 | [Upload + Extraction Pipeline](./03-sprint-3-upload-extraction-pipeline.md) | Planned | File upload, temp storage, upload jobs, extraction contract |
+| 2 | [Auth + Supabase Thread Persistence](./02-sprint-2-auth-supabase-thread-persistence.md) | Done | Real auth, users, study threads, thread messages |
+| 3 | [Upload + Extraction Pipeline](./03-sprint-3-upload-extraction-pipeline.md) | In Progress | File upload, temp storage, upload jobs, extraction contract |
 | 4 | [Review Engine](./04-sprint-4-review-engine.md) | Planned | Generate varied review questions from extracted knowledge |
 | 5 | [Flashcards + SM-2](./05-sprint-5-flashcards-sm2.md) | Planned | Due cards, review ratings, spaced repetition state |
 | 6 | [Dashboard Metrics + Production Hardening](./06-sprint-6-dashboard-metrics-hardening.md) | Planned | Real metrics, usage tracking, reliability, deployment readiness |
