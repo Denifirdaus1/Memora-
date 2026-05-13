@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isUuid } from "@/lib/utils";
 import { requireUser } from "@/server/queries/auth";
 import type {
   KnowledgeItem,
@@ -127,10 +128,4 @@ export async function getThreadKnowledgeItems(threadId: string) {
   }
 
   return (data ?? []) as KnowledgeItem[];
-}
-
-function isUuid(value: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    value,
-  );
 }

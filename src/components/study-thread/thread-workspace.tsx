@@ -5,12 +5,14 @@ import { notFound } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status-pill";
 import { UploadComposer } from "@/components/uploads/upload-composer";
+import { startReviewSessionAction } from "@/server/actions/review";
+import { createThreadMessageAction } from "@/server/actions/thread-messages";
 import {
   getStudyThread,
+  getThreadKnowledgeItems,
   getThreadMessages,
   getThreadUploads,
 } from "@/server/queries/study-threads";
-import { createThreadMessageAction } from "@/server/actions/thread-messages";
 
 export async function ThreadWorkspace({ threadId }: { threadId: string }) {
   const thread = await getStudyThread(threadId);
@@ -19,10 +21,12 @@ export async function ThreadWorkspace({ threadId }: { threadId: string }) {
     notFound();
   }
 
-  const [uploads, messages] = await Promise.all([
+  const [uploads, messages, knowledgeItems] = await Promise.all([
     getThreadUploads(thread.id),
     getThreadMessages(thread.id),
+    getThreadKnowledgeItems(thread.id),
   ]);
+  const canStartReview = knowledgeItems.length > 0;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -39,9 +43,12 @@ export async function ThreadWorkspace({ threadId }: { threadId: string }) {
             <p className="mt-1 text-sm text-[var(--muted)]">{thread.detected_topic}</p>
           </div>
           <div className="flex gap-2">
-            <Button asChild>
-              <Link href="/review/demo-session">Start Review</Link>
-            </Button>
+            <form action={startReviewSessionAction}>
+              <input type="hidden" name="threadId" value={thread.id} />
+              <Button type="submit" disabled={!canStartReview}>
+                Start Review
+              </Button>
+            </form>
             <Button variant="secondary" asChild>
               <Link href="/flashcards">Study Flashcards</Link>
             </Button>
@@ -106,8 +113,8 @@ export async function ThreadWorkspace({ threadId }: { threadId: string }) {
               <div>
                 <p className="font-semibold">No material uploaded yet</p>
                 <p className="text-sm text-[var(--muted)]">
-                  Sprint 2 stores the thread and chat history. Upload extraction comes
-                  next in Sprint 3.
+                  Upload a PDF or image first. Memora will extract study knowledge before
+                  review can start.
                 </p>
               </div>
             </div>

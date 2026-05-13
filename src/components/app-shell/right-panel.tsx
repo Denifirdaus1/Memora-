@@ -1,14 +1,21 @@
 import { BarChart3, Clock, CreditCard, Sparkles } from "lucide-react";
-import Link from "next/link";
 
+import { Button } from "@/components/ui/button";
 import { dashboardMetrics } from "@/features/dashboard/metrics";
-import { getThreadMemory, listStudyThreads } from "@/server/queries/study-threads";
+import { startReviewSessionAction } from "@/server/actions/review";
+import {
+  getThreadKnowledgeItems,
+  getThreadMemory,
+  listStudyThreads,
+} from "@/server/queries/study-threads";
 
 export async function RightPanel({ activeThreadId }: { activeThreadId?: string }) {
-  const [memory, threads] = await Promise.all([
+  const [memory, threads, knowledgeItems] = await Promise.all([
     activeThreadId ? getThreadMemory(activeThreadId) : Promise.resolve(null),
     listStudyThreads(),
+    activeThreadId ? getThreadKnowledgeItems(activeThreadId) : Promise.resolve([]),
   ]);
+  const canStartReview = Boolean(activeThreadId && knowledgeItems.length);
 
   return (
     <aside className="hidden min-h-screen w-[300px] shrink-0 border-l border-[var(--border)] bg-white p-5 xl:block">
@@ -33,14 +40,18 @@ export async function RightPanel({ activeThreadId }: { activeThreadId?: string }
 
         <PanelCard title="Ready to review" icon={<Clock size={16} />}>
           <p className="text-sm text-[var(--muted)]">
-            Review starts after upload extraction is available.
+            {canStartReview
+              ? `${knowledgeItems.length} knowledge items ready for practice.`
+              : "Review starts after upload extraction is available."}
           </p>
-          <Link
-            href="/review/demo-session"
-            className="mt-3 inline-flex h-9 items-center justify-center rounded-lg bg-[var(--primary)] px-3 text-sm font-bold text-[var(--primary-text)] opacity-60"
-          >
-            Start Review
-          </Link>
+          {activeThreadId ? (
+            <form action={startReviewSessionAction} className="mt-3">
+              <input type="hidden" name="threadId" value={activeThreadId} />
+              <Button type="submit" size="sm" disabled={!canStartReview}>
+                Start Review
+              </Button>
+            </form>
+          ) : null}
         </PanelCard>
 
         <PanelCard title="Progress" icon={<BarChart3 size={16} />}>

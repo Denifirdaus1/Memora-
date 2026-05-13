@@ -1,6 +1,6 @@
 # Sprint 4 - Review Engine
 
-Status: **Planned**
+Status: **In Progress - implementation added, pending live review validation**
 
 ## Goal
 
@@ -51,6 +51,23 @@ Generate varied review questions from a study thread's extracted learning materi
   - answer question
   - see feedback
   - complete summary
+
+## Implementation Notes
+
+- Added `review_sessions` and `session_questions` migration with RLS.
+- Added deterministic `knowledge_items` based review generator for MVP.
+- Added five question types: multiple choice, fill in the blank, L1 to target, target to L1, and sentence construction.
+- Added answer grading, session score calculation, per-question feedback, and summary data.
+- Wired Start Review from active study threads and the right panel.
+- Replaced demo review pages with database-backed review session pages.
+
+## Remaining Validation
+
+- Validate authenticated production flow after upload:
+  - start review from ready thread
+  - answer at least one question
+  - see feedback
+  - finish summary
 
 ## Dependencies
 
