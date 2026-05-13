@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #1e2d40;
+  --muted: #526173;
+  --surface: #ffffff;
+  --surface-raised: #f5f8ff;
+  --subtle: #eef5ff;
+  --border: #d7e3f2;
+  --border-strong: #9fb7d5;
+  --primary: #116eee;
+  --primary-hover: #0d59c8;
+  --primary-text: #ffffff;
+  --accent-blue: #116eee;
+  --accent-sky: #00b2ff;
+  --accent-navy: #1e2d40;
+  --warning: #f59e0b;
+  --danger: #e5484d;
+  --success: #116eee;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-subtle: var(--subtle);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --font-sans: var(--font-inter);
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--background);
+}
+
+body {
+  min-height: 100%;
+  background:
+    linear-gradient(180deg, rgba(238, 245, 255, 0.88), rgba(255, 255, 255, 0) 320px),
+    var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(17, 110, 238, 0.16);
+}
