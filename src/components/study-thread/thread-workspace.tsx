@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/nextjs";
 import { Bot, FileText, UserRound } from "lucide-react";
 import Link from "next/link";
 
+import { ThreadClientRecovery } from "@/components/study-thread/thread-client-recovery";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status-pill";
 import { UploadComposer } from "@/components/uploads/upload-composer";
@@ -24,7 +25,7 @@ export async function ThreadWorkspace({ threadId }: { threadId: string }) {
       extra: { threadId },
     });
 
-    return <ThreadUnavailable threadId={threadId} />;
+    return <ThreadClientRecovery threadId={threadId} />;
   }
 
   const [uploads, messages, knowledgeItems] = await Promise.all([
@@ -175,37 +176,6 @@ export async function ThreadWorkspace({ threadId }: { threadId: string }) {
           </form>
         </div>
       </footer>
-    </div>
-  );
-}
-
-function ThreadUnavailable({ threadId }: { threadId: string }) {
-  return (
-    <div className="flex min-h-screen items-center justify-center px-5 py-10">
-      <section className="w-full max-w-xl rounded-xl border border-[var(--border)] bg-white p-6 shadow-sm">
-        <p className="text-sm font-semibold text-[var(--accent-blue)]">
-          Thread belum bisa dibuka
-        </p>
-        <h1 className="mt-2 text-2xl font-bold">
-          Materi sudah diproses, tapi sesi perlu disinkronkan.
-        </h1>
-        <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
-          Ini biasanya terjadi setelah upload panjang ketika cookie auth server belum
-          sinkron. Kembali ke dashboard lalu buka thread dari sidebar, atau refresh
-          halaman ini setelah beberapa detik.
-        </p>
-        <p className="mt-3 break-all rounded-lg bg-[var(--surface-raised)] p-3 text-xs text-[var(--muted)]">
-          {threadId}
-        </p>
-        <div className="mt-5 flex gap-3">
-          <Button asChild>
-            <Link href="/dashboard">Back to dashboard</Link>
-          </Button>
-          <Button variant="secondary" asChild>
-            <Link href={`/threads/${threadId}`}>Retry</Link>
-          </Button>
-        </div>
-      </section>
     </div>
   );
 }

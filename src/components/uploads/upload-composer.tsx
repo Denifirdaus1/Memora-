@@ -33,6 +33,7 @@ export function UploadComposer({
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [uploadStage, setUploadStage] = useState<string | null>(null);
   const isCompact = variant === "compact";
 
   useEffect(() => {
@@ -86,6 +87,7 @@ export function UploadComposer({
       return;
     }
 
+    setUploadStage("Mempersiapkan study thread...");
     setIsUploading(true);
 
     const form = event.currentTarget;
@@ -129,11 +131,15 @@ export function UploadComposer({
 
       preparedThreadId = preparePayload.threadId;
       preparedUploads = preparePayload.uploads;
+      setUploadStage("Mengunggah file ke storage aman...");
 
       const failedUploads: Array<{ uploadId: string; message: string }> = [];
       const completedUploadIds: string[] = [];
 
       for (const [index, upload] of preparedUploads.entries()) {
+        setUploadStage(
+          `Mengunggah ${index + 1}/${preparedUploads.length}: ${upload.fileName}`,
+        );
         const file = selectedFiles[index];
 
         if (!file) {
@@ -175,6 +181,7 @@ export function UploadComposer({
         threadId?: string;
         error?: string;
       }>(completeResponse);
+      setUploadStage("Mengekstrak materi dan menyiapkan review...");
 
       if (!completeResponse.ok || !completePayload.threadId) {
         const message = completePayload.error ?? "Upload completion failed.";
@@ -188,6 +195,7 @@ export function UploadComposer({
 
       form.reset();
       setSelectedFiles([]);
+      setUploadStage("Membuka workspace belajar...");
       router.push(`/threads/${completePayload.threadId}`);
       router.refresh();
     } catch (uploadError) {
@@ -201,6 +209,7 @@ export function UploadComposer({
       setError("Upload failed. Check your connection and try again.");
     } finally {
       setIsUploading(false);
+      setUploadStage(null);
     }
   }
 
@@ -212,6 +221,7 @@ export function UploadComposer({
     }
 
     setError(null);
+    setUploadStage(null);
     setSelectedFiles(files);
   }
 
@@ -282,12 +292,14 @@ export function UploadComposer({
           <ul className="mt-2 space-y-1 text-[var(--muted)]">
             {selectedFiles.map((file) => (
               <li key={`${file.name}-${file.size}`} className="truncate">
-                {file.name} · {formatBytes(file.size)}
+                {file.name} - {formatBytes(file.size)}
               </li>
             ))}
           </ul>
         </div>
       ) : null}
+
+      {isUploading ? <UploadProgressPanel stage={uploadStage} /> : null}
 
       {!threadId ? (
         <label className="block">
@@ -381,4 +393,26 @@ function formatBytes(bytes: number) {
   }
 
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function UploadProgressPanel({ stage }: { stage: string | null }) {
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-white p-4">
+      <div className="flex items-center gap-3">
+        <Loader2 className="animate-spin text-[var(--accent-blue)]" size={18} />
+        <div>
+          <p className="font-bold">Memora sedang memproses materi</p>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            {stage ?? "Menyiapkan upload..."}
+          </p>
+        </div>
+      </div>
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#EAF2FF]">
+        <div className="h-full w-2/3 animate-pulse rounded-full bg-[var(--accent-blue)]" />
+      </div>
+      <p className="mt-3 text-xs text-[var(--muted)]">
+        Tetap di halaman ini. Workspace akan terbuka otomatis setelah thread siap.
+      </p>
+    </div>
+  );
 }
