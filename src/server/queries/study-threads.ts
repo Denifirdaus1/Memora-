@@ -1,6 +1,5 @@
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isUuid } from "@/lib/utils";
-import { requireUser } from "@/server/queries/auth";
+import { requireAuthenticatedSupabase } from "@/server/queries/auth";
 import type {
   KnowledgeItem,
   StudyThread,
@@ -10,8 +9,7 @@ import type {
 } from "@/types/database";
 
 export async function listStudyThreads() {
-  const user = await requireUser();
-  const supabase = await createSupabaseServerClient();
+  const { supabase, user } = await requireAuthenticatedSupabase();
   const { data, error } = await supabase
     .from("study_threads")
     .select("*")
@@ -30,8 +28,7 @@ export async function getStudyThread(threadId: string) {
     return null;
   }
 
-  const user = await requireUser();
-  const supabase = await createSupabaseServerClient();
+  const { supabase, user } = await requireAuthenticatedSupabase(`/threads/${threadId}`);
   const { data, error } = await supabase
     .from("study_threads")
     .select("*")
@@ -51,8 +48,7 @@ export async function getThreadMessages(threadId: string) {
     return [];
   }
 
-  const user = await requireUser();
-  const supabase = await createSupabaseServerClient();
+  const { supabase, user } = await requireAuthenticatedSupabase(`/threads/${threadId}`);
   const { data, error } = await supabase
     .from("thread_messages")
     .select("*")
@@ -72,8 +68,7 @@ export async function getThreadUploads(threadId: string) {
     return [];
   }
 
-  const user = await requireUser();
-  const supabase = await createSupabaseServerClient();
+  const { supabase, user } = await requireAuthenticatedSupabase(`/threads/${threadId}`);
   const { data, error } = await supabase
     .from("thread_uploads")
     .select("*")
@@ -93,8 +88,7 @@ export async function getThreadMemory(threadId: string) {
     return null;
   }
 
-  const user = await requireUser();
-  const supabase = await createSupabaseServerClient();
+  const { supabase, user } = await requireAuthenticatedSupabase(`/threads/${threadId}`);
   const { data, error } = await supabase
     .from("thread_memories")
     .select("*")
@@ -114,8 +108,7 @@ export async function getThreadKnowledgeItems(threadId: string) {
     return [];
   }
 
-  const user = await requireUser();
-  const supabase = await createSupabaseServerClient();
+  const { supabase, user } = await requireAuthenticatedSupabase(`/threads/${threadId}`);
   const { data, error } = await supabase
     .from("knowledge_items")
     .select("*")

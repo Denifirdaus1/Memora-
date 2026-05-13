@@ -19,23 +19,25 @@ export async function getCurrentUser() {
 }
 
 export async function requireUser(next = "/dashboard") {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    redirect(`/?${new URLSearchParams({ next }).toString()}`);
-  }
+  const { user } = await requireAuthenticatedSupabase(next);
 
   return user;
 }
 
 export async function getCurrentUserProfile() {
-  const user = await getCurrentUser();
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return null;
   }
 
-  const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("users")
     .select("*")
@@ -47,6 +49,23 @@ export async function getCurrentUserProfile() {
   }
 
   return data ? (data as UserProfile) : ensureUserProfile(user);
+}
+
+export async function requireAuthenticatedSupabase(next = "/dashboard") {
+  if (!isSupabaseConfigured()) {
+    redirect(`/?${new URLSearchParams({ next }).toString()}`);
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect(`/?${new URLSearchParams({ next }).toString()}`);
+  }
+
+  return { supabase, user };
 }
 
 export async function requireUserProfile(next = "/dashboard") {
