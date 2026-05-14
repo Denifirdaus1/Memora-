@@ -1,16 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import {
-  DEFAULT_REVIEW_QUESTION_COUNT,
-  generateReviewQuestions,
-} from "@/features/review/review-generation";
-import {
-  calculateReviewStats,
-  gradeReviewAnswer,
-} from "@/features/review/review-scoring";
+import { calculateReviewStats } from "@/features/review/review-scoring";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isUuid } from "@/lib/utils";
+import {
+  AI_REVIEW_QUESTION_COUNT,
+  generateReviewQuestionsWithAi,
+} from "@/server/ai/review-generation";
+import { gradeReviewAnswerWithAi } from "@/server/ai/review-grading";
 import type {
+  ExternalContext,
   KnowledgeItem,
   ReviewSession,
   SessionQuestion,
@@ -44,6 +43,7 @@ export async function startReviewSession({
   const supabase = (await createSupabaseServerClient()) as ReviewEngineSupabase;
   const thread = await getOwnedThread(supabase, threadId, userId);
   const knowledgeItems = await getKnowledgeItems(supabase, threadId, userId);
+  const externalContexts = await getExternalContexts(supabase, threadId, userId);
 
   if (!knowledgeItems.length) {
     throw new ReviewEngineError(
@@ -52,11 +52,13 @@ export async function startReviewSession({
     );
   }
 
-  const generatedQuestions = generateReviewQuestions({
+  const generatedQuestions = await generateReviewQuestionsWithAi({
     knowledgeItems,
-    questionCount: DEFAULT_REVIEW_QUESTION_COUNT,
+    externalContexts,
     settings: thread.settings,
+    threadTitle: thread.title,
   });
+  const knowledgeIds = new Set(knowledgeItems.map((item) => item.id));
 
   const { data: session, error: sessionError } = await supabase
     .from("review_sessions")
@@ -65,8 +67,11 @@ export async function startReviewSession({
       user_id: userId,
       question_count: generatedQuestions.length,
       settings: {
-        source: "knowledge_items",
-        generator: "deterministic.v1",
+        source: "ai_knowledge_items",
+        model: "gpt-5.4",
+        expected_question_count: AI_REVIEW_QUESTION_COUNT,
+        external_context_count: externalContexts.length,
+        question_types: generatedQuestions.map((question) => question.question_type),
       },
     })
     .select("*")
@@ -80,7 +85,11 @@ export async function startReviewSession({
     session_id: session.id,
     thread_id: thread.id,
     user_id: userId,
-    knowledge_item_id: question.knowledge_item_id,
+    knowledge_item_id: question.source_knowledge_item_id
+      ? knowledgeIds.has(question.source_knowledge_item_id)
+        ? question.source_knowledge_item_id
+        : null
+      : null,
     question_order: index + 1,
     question_type: question.question_type,
     prompt: question.prompt,
@@ -154,10 +163,8 @@ export async function answerReviewQuestion({
   }
 
   const normalizedQuestion = normalizeSessionQuestion(question as SessionQuestion);
-  const grade = gradeReviewAnswer({
-    questionType: normalizedQuestion.question_type,
-    correctAnswer: normalizedQuestion.correct_answer,
-    acceptableAnswers: normalizedQuestion.acceptable_answers,
+  const grade = await gradeReviewAnswerWithAi({
+    question: normalizedQuestion,
     userAnswer: answer,
   });
 
@@ -175,6 +182,15 @@ export async function answerReviewQuestion({
 
   if (answerError) {
     throw new ReviewEngineError(answerError.message);
+  }
+
+  if (normalizedQuestion.knowledge_item_id) {
+    await updateKnowledgeMastery({
+      supabase,
+      knowledgeItemId: normalizedQuestion.knowledge_item_id,
+      userId,
+      isCorrect: grade.isCorrect,
+    });
   }
 
   const questions = await getSessionQuestions(supabase, sessionId, userId);
@@ -299,6 +315,25 @@ async function getKnowledgeItems(
   return (data ?? []) as KnowledgeItem[];
 }
 
+async function getExternalContexts(
+  supabase: ReviewEngineSupabase,
+  threadId: string,
+  userId: string,
+) {
+  const { data, error } = await supabase
+    .from("external_contexts")
+    .select("*")
+    .eq("thread_id", threadId)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new ReviewEngineError(error.message);
+  }
+
+  return (data ?? []) as ExternalContext[];
+}
+
 async function getSessionQuestions(
   supabase: ReviewEngineSupabase,
   sessionId: string,
@@ -328,4 +363,40 @@ function normalizeSessionQuestion(question: SessionQuestion) {
       ? question.acceptable_answers
       : [],
   };
+}
+
+async function updateKnowledgeMastery({
+  supabase,
+  knowledgeItemId,
+  userId,
+  isCorrect,
+}: {
+  supabase: ReviewEngineSupabase;
+  knowledgeItemId: string;
+  userId: string;
+  isCorrect: boolean;
+}) {
+  const { data, error } = await supabase
+    .from("knowledge_items")
+    .select("times_seen,times_correct")
+    .eq("id", knowledgeItemId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error || !data) {
+    return;
+  }
+
+  const timesSeen = Number(data.times_seen ?? 0) + 1;
+  const timesCorrect = Number(data.times_correct ?? 0) + (isCorrect ? 1 : 0);
+
+  await supabase
+    .from("knowledge_items")
+    .update({
+      times_seen: timesSeen,
+      times_correct: timesCorrect,
+      mastery_score: Math.round((timesCorrect / timesSeen) * 100),
+    })
+    .eq("id", knowledgeItemId)
+    .eq("user_id", userId);
 }

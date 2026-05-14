@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { ReviewEngineError, startReviewSession } from "@/server/review/review-engine";
 
+export const maxDuration = 300;
+
 export async function POST(request: Request) {
   const body = (await request.json()) as { threadId?: unknown };
 

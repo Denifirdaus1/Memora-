@@ -6,6 +6,12 @@ export const reviewQuestionTypeSchema = z.enum([
   "translation_l1_to_tl",
   "translation_tl_to_l1",
   "sentence_construction",
+  "cloze",
+  "matching",
+  "ordering",
+  "short_answer",
+  "explain_why",
+  "error_correction",
 ]);
 
 export const generatedReviewQuestionSchema = z.object({

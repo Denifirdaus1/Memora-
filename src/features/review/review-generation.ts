@@ -135,6 +135,48 @@ function buildQuestion(
         acceptable_answers: [source.term],
         explanation: `Jawaban dianggap benar jika memakai "${source.term}" dengan konteks yang masuk akal.`,
       };
+    case "cloze":
+      return {
+        knowledge_item_id: source.knowledgeItemId,
+        question_type: questionType,
+        prompt: `Isi bagian kosong agar maknanya sesuai materi: ${source.topic} berkaitan dengan "__".`,
+        options: buildOptions(
+          source.term,
+          sources.map((item) => item.term),
+          seed,
+        ),
+        correct_answer: source.term,
+        acceptable_answers: [source.term],
+        explanation: `Istilah yang melengkapi konteks ini adalah "${source.term}".`,
+      };
+    case "matching":
+      return {
+        knowledge_item_id: source.knowledgeItemId,
+        question_type: questionType,
+        prompt: `Cocokkan istilah "${source.term}" dengan penjelasan yang benar.`,
+        options: buildOptions(
+          source.meaning,
+          sources.map((item) => item.meaning),
+          seed,
+        ),
+        correct_answer: source.meaning,
+        acceptable_answers: [source.meaning],
+        explanation: `"${source.term}" cocok dengan: ${source.meaning}`,
+      };
+    case "ordering":
+      return {
+        knowledge_item_id: source.knowledgeItemId,
+        question_type: questionType,
+        prompt: `Susun jawaban singkat yang menjelaskan "${source.term}" sesuai materi.`,
+        options: [source.term, source.topic, source.meaning],
+        correct_answer: `${source.term}: ${source.meaning}`,
+        acceptable_answers: [source.meaning],
+        explanation: `Urutan harus menjaga hubungan istilah dan maknanya.`,
+      };
+    case "short_answer":
+    case "explain_why":
+    case "error_correction":
+      return buildFallbackQuestion(source, seed);
   }
 }
 
@@ -189,13 +231,19 @@ function resolveEnabledQuestionTypes(settings?: ThreadSettings): ReviewQuestionT
     "translation_l1_to_tl",
     "translation_tl_to_l1",
     "sentence_construction",
+    "cloze",
+    "matching",
+    "ordering",
+    "short_answer",
+    "explain_why",
+    "error_correction",
   ];
 
   if (!settings?.question_types) {
     return defaults;
   }
 
-  const enabled = defaults.filter((type) => settings.question_types[type]);
+  const enabled = defaults.filter((type) => settings.question_types[type] !== false);
   return enabled.length ? enabled : defaults;
 }
 

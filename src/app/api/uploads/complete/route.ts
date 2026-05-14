@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { completeDirectUploads } from "@/server/uploads/direct-upload-pipeline";
 
+export const maxDuration = 300;
+
 export async function POST(request: Request) {
   try {
     const supabase = await createSupabaseServerClient();

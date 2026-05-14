@@ -19,6 +19,8 @@ export function ReviewSessionShell({
   answeredCount: number;
 }) {
   const isAnswered = Boolean(question?.answered_at);
+  const usesChoiceAnswer =
+    question?.question_type === "multiple_choice" && question.options.length > 0;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[var(--subtle)] p-4">
@@ -51,7 +53,7 @@ export function ReviewSessionShell({
               <form action={answerReviewQuestionAction} className="mt-6 space-y-4">
                 <input type="hidden" name="sessionId" value={session.id} />
                 <input type="hidden" name="questionId" value={question.id} />
-                {question.options.length ? (
+                {usesChoiceAnswer ? (
                   <div className="grid gap-3 sm:grid-cols-2">
                     {question.options.map((option) => (
                       <label
@@ -64,12 +66,31 @@ export function ReviewSessionShell({
                     ))}
                   </div>
                 ) : (
-                  <textarea
-                    required
-                    name="answer"
-                    className="min-h-28 w-full resize-none rounded-xl border border-[var(--border)] bg-white p-4 text-sm outline-none focus:border-[var(--accent-blue)]"
-                    placeholder="Tulis jawabanmu..."
-                  />
+                  <div className="space-y-3">
+                    {question.options.length ? (
+                      <div className="rounded-xl border border-[var(--border)] bg-white p-4">
+                        <p className="text-xs font-bold uppercase text-[var(--muted)]">
+                          Pilihan/fragmen yang bisa dipakai
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {question.options.map((option) => (
+                            <span
+                              key={option}
+                              className="rounded-full bg-[#EAF2FF] px-3 py-1 text-sm font-semibold text-[var(--accent-blue)]"
+                            >
+                              {option}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    <textarea
+                      required
+                      name="answer"
+                      className="min-h-28 w-full resize-none rounded-xl border border-[var(--border)] bg-white p-4 text-sm outline-none focus:border-[var(--accent-blue)]"
+                      placeholder={placeholderForQuestion(question.question_type)}
+                    />
+                  </div>
                 )}
                 <Button type="submit">Submit answer</Button>
               </form>
@@ -114,6 +135,11 @@ function Feedback({ question }: { question: SessionQuestion }) {
           Jawaban yang diharapkan: {question.correct_answer}
         </p>
       ) : null}
+      {question.feedback ? (
+        <p className="mt-3 text-sm leading-6 text-[var(--foreground)]">
+          {question.feedback}
+        </p>
+      ) : null}
       <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{question.explanation}</p>
     </div>
   );
@@ -121,4 +147,20 @@ function Feedback({ question }: { question: SessionQuestion }) {
 
 function formatQuestionType(type: SessionQuestion["question_type"]) {
   return type.replace(/_/g, " ");
+}
+
+function placeholderForQuestion(type: SessionQuestion["question_type"]) {
+  if (type === "matching") {
+    return "Tulis pasangan jawabanmu, misalnya: 1-A, 2-C, 3-B";
+  }
+
+  if (type === "ordering") {
+    return "Tulis urutan yang benar dari fragmen di atas.";
+  }
+
+  if (type === "error_correction") {
+    return "Tulis versi yang sudah diperbaiki dan alasannya singkat.";
+  }
+
+  return "Tulis jawabanmu...";
 }

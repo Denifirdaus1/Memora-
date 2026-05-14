@@ -1,12 +1,12 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 import { TEMP_UPLOAD_BUCKET } from "@/features/uploads/constants";
-import { buildExtractionStub } from "@/features/uploads/extraction-stub";
 import { buildTempUploadPath } from "@/features/uploads/storage-path";
 import {
   validateUploadBatch,
   type UploadFileCandidate,
 } from "@/features/uploads/validation";
+import { processUploadWithAi } from "@/server/uploads/process-upload-with-ai";
 import type { UserProfile } from "@/types/database";
 
 export interface DirectUploadPrepareInput {
@@ -165,12 +165,27 @@ export async function completeDirectUploads({
     return { status: 404, message: "Prepared upload was not found." };
   }
 
+  const { data: thread, error: threadError } = await supabase
+    .from("study_threads")
+    .select("id,title")
+    .eq("id", input.threadId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (threadError) {
+    return { status: 500, message: threadError.message };
+  }
+
+  if (!thread) {
+    return { status: 404, message: "Study thread not found." };
+  }
+
   for (const upload of uploads) {
     const completedAt = new Date().toISOString();
 
     await supabase
       .from("thread_uploads")
-      .update({ status: "processing" })
+      .update({ status: "uploaded" })
       .eq("id", upload.id)
       .eq("user_id", user.id);
 
@@ -186,58 +201,66 @@ export async function completeDirectUploads({
       .select("id")
       .maybeSingle();
 
+    const { data: fileBlob, error: downloadError } = await supabase.storage
+      .from(TEMP_UPLOAD_BUCKET)
+      .download(upload.storage_path);
+
+    if (downloadError || !fileBlob) {
+      const message = downloadError?.message ?? "Uploaded file was not found in storage.";
+      await markUploadFailed({
+        supabase,
+        uploadId: upload.id,
+        userId: user.id,
+        message,
+      });
+      return { status: 500, message };
+    }
+
+    await supabase
+      .from("thread_uploads")
+      .update({ status: "processing" })
+      .eq("id", upload.id)
+      .eq("user_id", user.id);
+
+    try {
+      await processUploadWithAi({
+        supabase,
+        userId: user.id,
+        thread: {
+          id: thread.id as string,
+          title: thread.title as string,
+        },
+        upload: {
+          id: upload.id as string,
+          file_name: upload.file_name as string,
+          mime_type: upload.mime_type as string,
+        },
+        fileBuffer: Buffer.from(await fileBlob.arrayBuffer()),
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "AI extraction failed for this upload.";
+      await markUploadFailed({
+        supabase,
+        uploadId: upload.id,
+        userId: user.id,
+        message,
+      });
+      return { status: 500, message };
+    }
+
     const { error: removeError } = await supabase.storage
       .from(TEMP_UPLOAD_BUCKET)
       .remove([upload.storage_path]);
 
-    if (removeError) {
-      await markUploadFailed({
-        supabase,
-        uploadId: upload.id,
-        userId: user.id,
-        message: removeError.message,
-      });
-      return { status: 500, message: removeError.message };
-    }
-
-    const extraction = buildExtractionStub({
-      fileName: upload.file_name,
-      mimeType: upload.mime_type,
-    });
-
-    const { error: knowledgeError } = await supabase.from("knowledge_items").insert(
-      extraction.items.map((item) => ({
-        ...item,
-        thread_id: input.threadId,
-        upload_id: upload.id,
-        user_id: user.id,
-      })),
-    );
-
-    if (knowledgeError) {
-      await markUploadFailed({
-        supabase,
-        uploadId: upload.id,
-        userId: user.id,
-        message: knowledgeError.message,
-      });
-      return { status: 500, message: knowledgeError.message };
-    }
-
-    const { error: doneError } = await supabase
+    await supabase
       .from("thread_uploads")
       .update({
-        status: "done",
-        extraction_summary: extraction.summary,
-        storage_deleted_at: completedAt,
-        completed_at: completedAt,
+        storage_deleted_at: removeError ? null : new Date().toISOString(),
+        error_message: removeError ? removeError.message : null,
       })
       .eq("id", upload.id)
       .eq("user_id", user.id);
-
-    if (doneError) {
-      return { status: 500, message: doneError.message };
-    }
 
     if (job?.id) {
       await supabase
@@ -246,25 +269,6 @@ export async function completeDirectUploads({
         .eq("id", job.id)
         .eq("user_id", user.id);
     }
-
-    await supabase
-      .from("study_threads")
-      .update({
-        status: "ready",
-        detected_language: extraction.summary.detected_language,
-        detected_topic: extraction.summary.detected_topic,
-        last_activity_at: completedAt,
-      })
-      .eq("id", input.threadId)
-      .eq("user_id", user.id);
-
-    await supabase.from("thread_memories").upsert({
-      thread_id: input.threadId,
-      user_id: user.id,
-      summary: `Ready to review ${extraction.summary.detected_topic ?? "uploaded material"}.`,
-      key_terms: [extraction.summary.detected_topic ?? "uploaded material"],
-      updated_at: completedAt,
-    });
   }
 
   return {
@@ -281,11 +285,11 @@ async function resolveThread({
   input: DirectUploadPrepareInput;
   supabase: SupabaseClient;
   userId: string;
-}): Promise<{ threadId: string } | UploadPipelineError> {
+}): Promise<{ threadId: string; title: string } | UploadPipelineError> {
   if (input.threadId) {
     const { data, error } = await supabase
       .from("study_threads")
-      .select("id")
+      .select("id,title")
       .eq("id", input.threadId)
       .eq("user_id", userId)
       .maybeSingle();
@@ -298,7 +302,7 @@ async function resolveThread({
       return { status: 404, message: "Study thread not found." };
     }
 
-    return { threadId: data.id as string };
+    return { threadId: data.id as string, title: data.title as string };
   }
 
   const title = input.title?.trim() || deriveTitle(input.firstMessage);
@@ -309,7 +313,7 @@ async function resolveThread({
       title,
       status: "processing",
     })
-    .select("id")
+    .select("id,title")
     .single();
 
   if (threadError) {
@@ -340,7 +344,7 @@ async function resolveThread({
     }
   }
 
-  return { threadId: thread.id as string };
+  return { threadId: thread.id as string, title: thread.title as string };
 }
 
 async function markUploadFailed({

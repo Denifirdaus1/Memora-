@@ -7,7 +7,14 @@ export type StudyThreadStatus =
 
 export type MessageRole = "system" | "user" | "assistant" | "tool";
 
-export type UploadStatus = "queued" | "processing" | "done" | "failed" | "deleted";
+export type UploadStatus =
+  | "queued"
+  | "uploaded"
+  | "processing"
+  | "extracted"
+  | "done"
+  | "failed"
+  | "deleted";
 
 export type UploadJobStatus = "queued" | "processing" | "done" | "failed";
 
@@ -18,13 +25,23 @@ export type ReviewQuestionType =
   | "fill_in_blank"
   | "translation_l1_to_tl"
   | "translation_tl_to_l1"
-  | "sentence_construction";
+  | "sentence_construction"
+  | "cloze"
+  | "matching"
+  | "ordering"
+  | "short_answer"
+  | "explain_why"
+  | "error_correction";
 
 export type KnowledgeItemType =
   | "vocabulary"
   | "grammar_pattern"
   | "exercise_type"
-  | "topic_context";
+  | "topic_context"
+  | "concept"
+  | "example"
+  | "misconception"
+  | "assessment_target";
 
 export interface UserProfile {
   id: string;
@@ -61,6 +78,12 @@ export interface ThreadSettings {
     translation_l1_to_tl: boolean;
     translation_tl_to_l1: boolean;
     sentence_construction: boolean;
+    cloze?: boolean;
+    matching?: boolean;
+    ordering?: boolean;
+    short_answer?: boolean;
+    explain_why?: boolean;
+    error_correction?: boolean;
   };
   difficulty: "relaxed" | "challenging";
   auto_update_memory: boolean;
@@ -104,6 +127,9 @@ export interface ThreadUpload {
   } | null;
   created_at: string;
   completed_at: string | null;
+  ai_model?: string | null;
+  extraction_version?: string | null;
+  source_chunk_count?: number;
 }
 
 export interface UploadJob {
@@ -139,8 +165,39 @@ export interface KnowledgeItem {
   target_language: string;
   content: Record<string, unknown>;
   source_page_hint: string | null;
+  difficulty?: "easy" | "medium" | "hard";
+  confidence?: number;
+  mastery_score?: number;
   times_seen: number;
   times_correct: number;
+  created_at: string;
+}
+
+export interface SourceChunk {
+  id: string;
+  thread_id: string;
+  upload_id: string;
+  user_id: string;
+  chunk_index: number;
+  source_page_hint: string | null;
+  content_text: string;
+  visual_description: string | null;
+  confidence: number;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ExternalContext {
+  id: string;
+  thread_id: string;
+  upload_id: string | null;
+  knowledge_item_id: string | null;
+  user_id: string;
+  source_url: string;
+  source_title: string;
+  summary: string;
+  linked_topic: string | null;
+  confidence: number;
   created_at: string;
 }
 

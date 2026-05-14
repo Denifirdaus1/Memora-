@@ -5,7 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { runUploadPipeline } from "@/server/uploads/upload-pipeline";
 import type { UserProfile } from "@/types/database";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   try {

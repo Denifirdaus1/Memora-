@@ -1,9 +1,9 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 import { TEMP_UPLOAD_BUCKET } from "@/features/uploads/constants";
-import { buildExtractionStub } from "@/features/uploads/extraction-stub";
 import { buildTempUploadPath } from "@/features/uploads/storage-path";
 import { validateUploadBatch } from "@/features/uploads/validation";
+import { processUploadWithAi } from "@/server/uploads/process-upload-with-ai";
 import type { UserProfile } from "@/types/database";
 
 export interface UploadPipelineResult {
@@ -18,6 +18,7 @@ export interface UploadPipelineError {
 
 interface ResolvedThread {
   threadId: string;
+  title: string;
 }
 
 interface ProcessedUpload {
@@ -57,7 +58,7 @@ export async function runUploadPipeline({
     const uploadResult = await processSingleFile({
       file,
       supabase,
-      threadId: threadResult.threadId,
+      thread: threadResult,
       userId: user.id,
     });
 
@@ -85,7 +86,7 @@ async function resolveThread({
   if (threadId) {
     const { data, error } = await supabase
       .from("study_threads")
-      .select("id")
+      .select("id,title")
       .eq("id", threadId)
       .eq("user_id", user.id)
       .maybeSingle();
@@ -98,7 +99,7 @@ async function resolveThread({
       return { status: 404, message: "Study thread not found." };
     }
 
-    return { threadId: data.id as string };
+    return { threadId: data.id as string, title: data.title as string };
   }
 
   const firstMessage = readFormString(formData, "firstMessage");
@@ -111,7 +112,7 @@ async function resolveThread({
       title,
       status: "processing",
     })
-    .select("id")
+    .select("id,title")
     .single();
 
   if (threadError) {
@@ -142,31 +143,31 @@ async function resolveThread({
     }
   }
 
-  return { threadId: thread.id as string };
+  return { threadId: thread.id as string, title: thread.title as string };
 }
 
 async function processSingleFile({
   file,
   supabase,
-  threadId,
+  thread,
   userId,
 }: {
   file: File;
   supabase: SupabaseClient;
-  threadId: string;
+  thread: ResolvedThread;
   userId: string;
 }): Promise<ProcessedUpload | UploadPipelineError> {
   const uploadId = crypto.randomUUID();
   const storagePath = buildTempUploadPath({
     userId,
-    threadId,
+    threadId: thread.threadId,
     uploadId,
     fileName: file.name,
   });
 
   const { error: uploadRowError } = await supabase.from("thread_uploads").insert({
     id: uploadId,
-    thread_id: threadId,
+    thread_id: thread.threadId,
     user_id: userId,
     file_name: file.name,
     file_size_bytes: file.size,
@@ -184,7 +185,7 @@ async function processSingleFile({
     .from("upload_jobs")
     .insert({
       upload_id: uploadId,
-      thread_id: threadId,
+      thread_id: thread.threadId,
       user_id: userId,
       status: "queued",
     })
@@ -226,62 +227,47 @@ async function processSingleFile({
     return { status: 500, message: storageError.message };
   }
 
+  try {
+    await processUploadWithAi({
+      supabase,
+      userId,
+      thread: {
+        id: thread.threadId,
+        title: thread.title,
+      },
+      upload: {
+        id: uploadId,
+        file_name: file.name,
+        mime_type: file.type,
+      },
+      fileBuffer: Buffer.from(await file.arrayBuffer()),
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "AI extraction failed for this upload.";
+    await markJobFailed({
+      supabase,
+      jobId: job.id,
+      userId,
+      message,
+    });
+    await markUploadFailed({ supabase, uploadId, message });
+    return { status: 500, message };
+  }
+
+  const completedAt = new Date().toISOString();
   const { error: removeError } = await supabase.storage
     .from(TEMP_UPLOAD_BUCKET)
     .remove([storagePath]);
 
-  if (removeError) {
-    await markJobFailed({
-      supabase,
-      jobId: job.id,
-      userId,
-      message: removeError.message,
-    });
-    await markUploadFailed({ supabase, uploadId, message: removeError.message });
-    return { status: 500, message: removeError.message };
-  }
-
-  const extraction = buildExtractionStub({
-    fileName: file.name,
-    mimeType: file.type,
-  });
-
-  const { error: knowledgeError } = await supabase.from("knowledge_items").insert(
-    extraction.items.map((item) => ({
-      thread_id: threadId,
-      upload_id: uploadId,
-      user_id: userId,
-      ...item,
-    })),
-  );
-
-  if (knowledgeError) {
-    await markJobFailed({
-      supabase,
-      jobId: job.id,
-      userId,
-      message: knowledgeError.message,
-    });
-    await markUploadFailed({ supabase, uploadId, message: knowledgeError.message });
-    return { status: 500, message: knowledgeError.message };
-  }
-
-  const completedAt = new Date().toISOString();
-
-  const { error: doneError } = await supabase
+  await supabase
     .from("thread_uploads")
     .update({
-      status: "done",
-      extraction_summary: extraction.summary,
-      storage_deleted_at: completedAt,
-      completed_at: completedAt,
+      storage_deleted_at: removeError ? null : completedAt,
+      error_message: removeError ? removeError.message : null,
     })
     .eq("id", uploadId)
     .eq("user_id", userId);
-
-  if (doneError) {
-    return { status: 500, message: doneError.message };
-  }
 
   await supabase
     .from("upload_jobs")
@@ -293,20 +279,9 @@ async function processSingleFile({
     .from("study_threads")
     .update({
       status: "ready",
-      detected_topic: extraction.summary.detected_topic,
       last_activity_at: completedAt,
     })
-    .eq("id", threadId)
-    .eq("user_id", userId);
-
-  await supabase
-    .from("thread_memories")
-    .update({
-      summary: `Ready to review ${extraction.summary.detected_topic ?? "uploaded material"}.`,
-      key_terms: [extraction.summary.detected_topic ?? "uploaded material"],
-      updated_at: completedAt,
-    })
-    .eq("thread_id", threadId)
+    .eq("id", thread.threadId)
     .eq("user_id", userId);
 
   return { uploadId };
