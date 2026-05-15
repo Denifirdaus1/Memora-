@@ -41,17 +41,16 @@ const extractionKnowledgeItemSchema = z.object({
   source_page_hint: z.string().min(1).max(120).nullable(),
   difficulty: difficultySchema,
   confidence: z.number().min(0).max(1),
-  content: z
-    .object({
-      title: z.string().min(1).max(180).optional(),
-      term: z.string().min(1).max(180).optional(),
-      meaning: z.string().min(1).max(800).optional(),
-      explanation: z.string().min(1).max(1600).optional(),
-      example: z.string().min(1).max(800).optional(),
-      correction: z.string().min(1).max(800).optional(),
-      why_it_matters: z.string().min(1).max(800).optional(),
-    })
-    .passthrough(),
+  content: z.object({
+    title: z.string().min(1).max(180).nullable(),
+    term: z.string().min(1).max(180).nullable(),
+    meaning: z.string().min(1).max(800).nullable(),
+    explanation: z.string().min(1).max(1600).nullable(),
+    example: z.string().min(1).max(800).nullable(),
+    correction: z.string().min(1).max(800).nullable(),
+    why_it_matters: z.string().min(1).max(800).nullable(),
+    assessment_focus: z.string().min(1).max(800).nullable(),
+  }),
 });
 
 const extractionSchema = z.object({
@@ -203,8 +202,22 @@ async function enrichExtractionWithWeb({
 export function toKnowledgeRowContent(
   content: Record<string, unknown>,
 ): Record<string, unknown> {
+  const compactContent = Object.fromEntries(
+    Object.entries(content).filter(([, value]) => {
+      if (value === null || value === undefined) {
+        return false;
+      }
+
+      if (typeof value === "string" && value.trim().length === 0) {
+        return false;
+      }
+
+      return true;
+    }),
+  );
+
   return {
-    ...content,
+    ...compactContent,
     extraction_version: STUDY_EXTRACTION_VERSION,
   };
 }
